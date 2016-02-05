@@ -1,0 +1,291 @@
+<?php
+/**
+ * Permission des accès du module
+ * @return array
+ */
+function upload_pdf_permission() {
+    return array(
+        'access upload pdf' => array('title' => t('Access module Upload PDF'))
+    );
+}
+
+
+/**
+ * Routing de la page
+ * @return array
+ */
+function upload_pdf_menu() {
+    $items = array();
+
+    $items['upload'] = array(
+        'title' => t('Mon module Upload'),
+        'description' => 'Allow upload PDFs',
+        'page callback' => 'upload_pdf_custom_page_upload_display',
+        'access arguments' => array('access content'),
+    );
+
+    $items['upload/download'] = array(
+        'title' => 'Download PDF',
+        'type' => MENU_DEFAULT_LOCAL_TASK,
+        'weight' => -10
+    );
+
+    $items['upload/see'] = array(
+        'title' => 'See PDFs',
+        'type' => MENU_LOCAL_TASK,
+        'page callback' => 'upload_pdf_custom_page_tablefiles_display',
+        'access arguments' => array('some permission')
+    );
+
+    return $items;
+}
+
+
+/**
+ * Construction du formulaire
+ * @param $form
+ * @param $form_state
+ * @return mixed
+ */
+function upload_pdf_form_files($form, $form_state) {
+
+    $form['file'] = array(
+        '#type' => 'file',
+        '#title' => t('Uploader un pdf'),
+        '#description' => t('Extensions autorisées: pdf'),
+    );
+
+    $form['submit'] = array(
+        '#type' => 'submit',
+        '#value' => 'Submit',
+    );
+
+    return $form;
+}
+
+/**
+ * Retourne le repertoire ou les fichiers sont stockés
+ * @return string
+ */
+function get_directory_path(){
+    $dir = "public://";
+    if (file_prepare_directory($dir, $options = FILE_MODIFY_PERMISSIONS)) {
+        return $dir;
+    }
+}
+
+/**
+ * Retourne l'url des fichiers
+ * @return string
+ */
+function get_uri_files(){
+
+    $dir = get_directory_path();
+
+    $url = file_create_url($dir);
+
+    return $url;
+
+}
+
+/**
+ * Retoune les fichiers du répertoires
+ * @return array
+ */
+function get_files(){
+
+    $dir = get_directory_path();
+
+    $files = file_scan_directory($dir, '/.*\.pdf$/');
+
+    if(!empty($files)){
+        foreach($files as $file){
+            $filename[] = $file;
+        }
+        return $filename;
+    }
+}
+
+/**
+ * Tableau contenant les fichiers
+ * @return mixed
+ */
+function upload_pdf_form_see($form, $form_state){
+
+    $url = get_uri_files();
+
+    $files= get_files();
+    $files_dir  = variable_get('file_public_path', conf_path() . '/files');
+
+    if(!empty($files)){
+        $rows = array();
+
+        foreach ($files as $file) {
+
+            $path = $files_dir.'/'.$file->filename;
+            $uri = '<a href="'.$path.'">See</a>';
+
+            $rows[$path] = array(
+                array('data' => $file->name),
+                array('data' => $uri)
+            );
+        }
+
+        $header = array(t('PDF name'),t('Link'));
+
+        $form['files'] = array(
+            '#type' => 'fieldset',
+            '#title' => t('Mes fichiers PDF'),
+            '#collapsible' => TRUE,
+            '#collapsed' => FALSE,
+        );
+
+        $form['files']['table'] = array(
+            '#type' => 'tableselect',
+            '#header' => $header,
+            '#options' => $rows,
+        );
+
+
+        $form['submit'] = array(
+            '#type' => 'submit',
+            '#value' => 'Delete',
+        );
+        return $form;
+    }
+
+}
+
+/**
+ * Construction de la page tab1
+ * @return mixed
+ */
+function upload_pdf_custom_page_upload_display(){
+
+    return drupal_get_form("upload_pdf_form_files");
+}
+
+/**
+ * Construction de la page tab2
+ * @return mixed
+ */
+function upload_pdf_custom_page_tablefiles_display(){
+
+    return drupal_get_form("upload_pdf_form_see");
+}
+
+
+
+/**
+ * Validation du formulaire de l'upload
+ * @param $form
+ * @param $form_state
+ */
+function upload_pdf_form_files_validate($form, &$form_state) {
+
+
+    if (empty($_FILES['files']['name'])){
+        return NULL;
+    }
+
+    $dir = get_directory_path();
+
+    $file_mime =  $_FILES['files']['type']['file'];
+
+    $extension_allowed = array('pdf','PDF');
+
+    upload_pdf_validator($file_mime);
+
+    $file = file_save_upload('file', array(
+        'file_validate_extensions' => $extension_allowed,
+    ),$dir,FILE_EXISTS_RENAME);
+
+    if ($file) {
+        if ($file = file_move($file, $dir,FILE_EXISTS_RENAME)) {
+            $form_state['storage']['file'] = $file;
+        }
+        else {
+            form_set_error('file', t("Failed to write the uploaded file to the site's file folder."));
+        }
+    }
+    else {
+        form_set_error('file', t('No file was uploaded.'));
+    }
+}
+
+
+/**
+ * Validate select table
+ * @param $form
+ * @param $form_state
+ */
+function upload_pdf_form_see_validate($form, &$form_state){
+
+    $selected_files = (isset($_POST['table'])?$_POST['table']: '');
+
+    if (!empty($selected_files)){
+
+        $filestodelete = $_POST['table'];
+
+        foreach ($filestodelete as $file) {
+            file_unmanaged_delete($file);
+        }
+    }else{
+        form_set_error('files', t('No file was selected.'));
+    }
+
+}
+
+
+/**
+ * Submit du delete dans la second tab
+ * @param $form
+ * @param $form_state
+ */
+function upload_pdf_form_see_submit($form, &$form_state){
+
+    drupal_set_message(t('The file has been deleted.'));
+
+}
+
+
+
+/**
+ * Valide le mime type
+ * @param $file_mime
+ * @return array
+ */
+function upload_pdf_validator($file_mime) {
+
+    $errors = array();
+
+    if ($file_mime != 'application/pdf') {
+        $errors[] = t("There was a problem with this file's extension.");
+    }
+
+    return $errors;
+}
+
+
+/**
+ * Submit de l'upload
+ * @param $form
+ * @param $form_state
+ */
+function upload_pdf_form_files_submit($form, &$form_state) {
+
+    $dir = get_directory_path();
+
+    $file = $form_state['storage']['file'];
+
+    unset($form_state['storage']['file']);
+
+    $file->status = FILE_STATUS_PERMANENT;
+
+    file_save($file);
+
+    drupal_set_message(t('The form has been submitted and the file @filename has been saved.', array(
+        '@filename' => $file->filename)));
+
+    $form_state['redirect']  = 'upload/see';
+}

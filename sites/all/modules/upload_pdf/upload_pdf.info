@@ -1,0 +1,8 @@
+name = Upload PDF
+description = "Permet uploader des pdfs"
+package = Leading boards
+core = 7.x
+files[] = update_pdf.module
+version = "1.0"
+project = "drupal"
+datestamp = "1269192313"
